@@ -1,0 +1,154 @@
+<!-- index.html -->
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FungiHouse - Tienda de Hongos</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Barra de navegación -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#" onclick="mostrarSeccion('inicio'); return false;" class="logo-link">
+                <img src="imagenes/logo.png" alt="FungiHouse Logo" class="logo-imagen">
+            </a>
+            <ul class="nav-links">
+                <li><a href="#" class="nav-link active" data-section="inicio">Inicio</a></li>
+                <li><a href="#" class="nav-link" data-section="productos">Productos</a></li>
+                <li><a href="#" class="nav-link" data-section="carrito">Carrito</a></li>
+                <li><a href="#" class="nav-link" data-section="contacto">Contacto</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Contenedor de secciones -->
+    <main class="main-container">
+        <!-- Sección de inicio -->
+        <section id="inicio" class="section active">
+            <div class="portada-hero">
+                <img src="imagenes/portada.png" alt="Portada FungiHouse" class="portada-imagen">
+                <div class="portada-overlay">
+                    <h1>Bienvenidos</h1>
+                    <p>Descubre la variedad de chocolates que tenemos para que disfrutes el sabor ancestral.</p>
+                    <button class="btn btn-primary" onclick="mostrarSeccion('productos')">Explorar Productos</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de productos -->
+        <section id="productos" class="section">
+            <div class="section-content">
+                <h1>Nuestros Productos</h1>
+                <div class="productos-grid">
+                    
+                    <!-- PRODUCTO 1 -->
+                    <div class="producto-card">
+                        <h2>Choco Hongo Despertar</h2>
+                        <div class="producto-imagen">
+                            <img src="imagenes/choco-hongo-despertar.png" alt="Choco Hogo Despertar" class="img-producto">
+                        </div>
+                        
+                        <p>Chocolate relleno de arequipe con 1gr de hongos secos</p>
+                        <p class="precio">$10.000</p>
+                        
+                        <!-- Selector de cantidad mejorado -->
+                        <div class="cantidad-selector">
+                            <button class="btn-cantidad" onclick="decrementarCantidad(this)">−</button>
+                            <input type="number" min="1" max="999" value="1" class="cantidad-input" onchange="validarCantidad(this)" onkeypress="validarInput(event)">
+                            <button class="btn-cantidad" onclick="incrementarCantidad(this)">+</button>
+                        </div>
+                        
+                        <button class="btn btn-secondary" onclick="agregarAlCarrito('Choco Hogo Despertar', 10000, this)">Agregar al carrito</button>
+                    </div>
+
+                    <!-- PRODUCTO 2 -->
+                    <div class="producto-card">
+                        <h2>Choco Hongo Armonia</h2>
+                        <div class="producto-imagen">
+                            <img src="imagenes/choco-hongo-armonia.png" alt="Choco Hongo Armonia" class="img-producto">
+                        </div>
+                        
+                        <p>Chocolate relleno de arequipe con 2grs de hongos secos</p>
+                        <p class="precio">$20.000</p>
+                        
+                        <!-- Selector de cantidad mejorado -->
+                        <div class="cantidad-selector">
+                            <button class="btn-cantidad" onclick="decrementarCantidad(this)">−</button>
+                            <input type="number" min="1" max="999" value="1" class="cantidad-input" onchange="validarCantidad(this)" onkeypress="validarInput(event)">
+                            <button class="btn-cantidad" onclick="incrementarCantidad(this)">+</button>
+                        </div>
+                        
+                        <button class="btn btn-secondary" onclick="agregarAlCarrito('Choco Hongo Armonia', 20000, this)">Agregar al carrito</button>
+                    </div>
+
+                    <!-- PRODUCTO 3 -->
+                    <div class="producto-card">
+                        <h2>Choco Hongo Ancestral</h2>
+                        <div class="producto-imagen">
+                            <img src="imagenes/choco-hongo-ancestral.png" alt="Choco Hongo Ancestral" class="img-producto">
+                        </div>
+                        
+                        <p>Chocolate relleno de arequipe con 3.3grs de hongos secos</p>
+                        <p class="precio">$30.000</p>
+                        
+                        <!-- Selector de cantidad mejorado -->
+                        <div class="cantidad-selector">
+                            <button class="btn-cantidad" onclick="decrementarCantidad(this)">−</button>
+                            <input type="number" min="1" max="999" value="1" class="cantidad-input" onchange="validarCantidad(this)" onkeypress="validarInput(event)">
+                            <button class="btn-cantidad" onclick="incrementarCantidad(this)">+</button>
+                        </div>
+                        
+                        <button class="btn btn-secondary" onclick="agregarAlCarrito('Choco Hongo Ancestral', 30000, this)">Agregar al carrito</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de carrito -->
+        <section id="carrito" class="section">
+            <div class="section-content">
+                <h1>Tu Carrito</h1>
+                <div id="carrito-items">
+                    <p class="vacio">Tu carrito está vacío</p>
+                </div>
+                <div class="carrito-resumen">
+                    <h3>Total a pagar: <span id="total">$0.00</span></h3>
+                    <button class="btn btn-primary" onclick="procederPago()">Proceder al Pago</button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Sección de contacto -->
+        <section id="contacto" class="section">
+            <div class="section-content">
+                <h1>Contáctanos</h1>
+                <div class="contacto-info">
+                    <p><strong>Teléfono:</strong> +573218870869</p>
+                    <p><strong>Correo:</strong> fungihouse@fungihouse.com</p>
+                    <p><strong>Ubicación:</strong> Calle principal, número 123</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Pie de página -->
+    <footer>
+        <p>&copy; 2026 FungiHouse. Todos los derechos reservados.</p>
+    </footer>
+
+    <!-- Config de colores - CARGA UNA SOLA VEZ -->
+    <script src="config.js"></script>
+
+    <!-- Scripts - CARGA AQUÍ (después de config.js) -->
+    <script src="script.js"></script>
+</body>
+</html>
