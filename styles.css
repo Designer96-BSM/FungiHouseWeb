@@ -123,19 +123,55 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav-link.active {
+    position: relative;
+    z-index: 0;
     background-color: var(--color-primario);
     color: #000;
     font-weight: 600;
 }
 
+.nav-link.active::before,
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border: 2px solid var(--color-primario);
+    border-radius: inherit;
+    pointer-events: none;
+    animation: navWave 2.4s ease-out infinite;
+    z-index: -1;
+}
+
+.nav-link.active::after {
+    animation-delay: 1.2s;
+}
+
+@keyframes navWave {
+    0% {
+        opacity: 0.8;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.45);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-link.active::before,
+    .nav-link.active::after {
+        animation: none;
+    }
+}
+
 /* ===== RESPONSIVE - TABLET ===== */
 @media (max-width: 768px) {
     .navbar {
-        height: 60px;  /* Navbar más pequeña en tablet */
+        height: 90px;  /* Navbar más pequeña en tablet */
     }
 
     .logo-imagen {
-        height: 35px;  /* Logo más pequeño */
+        height: 80px;  /* Logo más pequeño */
     }
 
     .nav-links {
@@ -159,11 +195,11 @@ h1, h2, h3, h4, h5, h6 {
 /* ===== RESPONSIVE - MÓVIL ===== */
 @media (max-width: 480px) {
     .navbar {
-        height: 50px;  /* Navbar aún más pequeña en móvil */
+        height: 80px;  /* Navbar aún más pequeña en móvil */
     }
 
     .logo-imagen {
-        height: 35px;  /* Logo más pequeño para móvil */
+        height: 60px;  /* Logo más pequeño para móvil */
     }
 
     .nav-links {
@@ -213,7 +249,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .section-content {
-    background: rgba(0, 0, 0, 0.5);  /* Fondo translúcido */
+    background: rgba(0, 0, 0, 0.3);  /* Fondo translúcido */
     backdrop-filter: blur(10px);             /* Efecto cristal */
     -webkit-backdrop-filter: blur(10px);     /* Para Safari */
     padding: 2rem;
@@ -532,7 +568,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ===== PIE DE PÁGINA ===== */
 footer {
-    background-color: var(--fondo-medio);
+    background: rgba(0, 0, 0, 0.4);
     color: var(--texto-gris-oscuro);
     text-align: center;
     padding: 1.5rem;
