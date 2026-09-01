@@ -27,7 +27,7 @@
 }
 
 body {
-    background-image: url('imagenes/fondo.jpg');
+    background-image: url('imagenes/fondo.jfif');
     background-size: cover;           /* Cubre todo el viewport */
     background-position: center;      /* Centra la imagen */
     background-attachment: fixed;    /* Efecto parallax */
@@ -289,11 +289,88 @@ h1, h2, h3, h4, h5, h6 {
     transition: all 0.3s ease;
 }
 
+.portada-hero::before,
+.portada-hero::after {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 1;
+}
+
+.portada-hero::before {
+    background:
+        repeating-radial-gradient(circle at center, transparent 0 28px, rgba(255, 255, 255, 0.2) 29px 31px, transparent 32px 58px),
+        repeating-conic-gradient(from 15deg at center, rgba(16, 185, 129, 0.16) 0deg 8deg, transparent 8deg 22deg);
+    mix-blend-mode: screen;
+    transform: scale(0.45) rotate(0deg);
+    transition: opacity 0.35s ease;
+}
+
+.portada-hero::after {
+    opacity: 1;
+    border: 3px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 35px rgba(16, 185, 129, 0.18),
+        0 0 0 70px rgba(17, 143, 73, 0.12),
+        0 0 0 105px rgba(16, 185, 129, 0.14);
+    transform: scale(0.1);
+    animation: portadaRipple 2.0s ease-out infinite;
+}
+
 .portada-imagen {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+    transition: transform 1.2s ease, filter 1.2s ease;
+}
+
+.portada-hero:hover .portada-imagen {
+    transform: scale(1.08) rotate(1deg);
+    filter: saturate(1.3) contrast(1.08) brightness(0.82);
+}
+
+.portada-hero:hover::before {
+    opacity: 1;
+    animation: mandalaWater 7s linear infinite;
+}
+
+@keyframes mandalaWater {
+    0% {
+        transform: scale(1.1) rotate(0deg) translate(0, 0);
+    }
+    50% {
+        transform: scale(1.2) rotate(180deg) translate(2%, -1%);
+    }
+    100% {
+        transform: scale(1.5) rotate(360deg) translate(0, 0);
+    }
+}
+
+@keyframes portadaRipple {
+    0% {
+        opacity: 0;
+        transform: scale(0.1);
+    }
+    25% {
+        opacity: 0.85;
+    }
+    100% {
+        opacity: 0;
+        transform: scale(3.2);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .portada-imagen,
+    .portada-hero::before,
+    .portada-hero::after {
+        transition: none;
+        animation: none;
+    }
 }
 
 .portada-overlay {
