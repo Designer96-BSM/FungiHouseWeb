@@ -117,7 +117,7 @@ h1, h2, h3, h4, h5, h6 {
     transition: all 0.3s ease;
     cursor: pointer;
     border: 2px solid rgba(255, 255, 255, 0.25);
-    background-image: url('imagenes/fondoboton.jfif');
+    background-image: url('imagenes/fondo2.jpg');
     background-size: cover;
     background-position: center;
     font-weight: 500;
