@@ -1,22 +1,16 @@
 /* ==========================================================
-   Scrollytelling con secuencia de imágenes
-   1) Reproduce en bucle los fotogramas de "frames/goku2" en el hero
-   2) Sincroniza los fotogramas de "frames/goku3" con el scroll
+   Scrollytelling con videos
+   1) Reproduce "videos/fungihousev2.mp4" en bucle ping-pong en el hero
+   2) Sincroniza "videos/fungihousev1.mp4" con el scroll
    ========================================================== */
 
 const CONFIG = {
-  heroFolder: "frames/goku2",
-  scrollFolder: "frames/goku3",
-  prefix: "frame_",        // prefijo de los archivos
-  frameCount: 60,          // frame_0001 hasta frame_0060 en cada carpeta
-  digits: 4,               // cantidad de dígitos del número
-  extensions: ["jpg", "webp", "png", "jpeg", "avif"], // se detecta sola
-  loopFps: 12,             // velocidad del bucle del hero
+  heroVideo: "videos/fungihousev2.mp4",
+  scrollVideo: "videos/fungihousev1.mp4",
+  loopFps: 10,             // frecuencia de los fotogramas guardados para el tramo inverso
+  scrollFps: 24,
   heroPreviewTime: 1200,   // tiempo mínimo para ver el hero detrás del loader
   minLoadTime: 1000,       // milisegundos mínimos de la animación de carga
-  smoothing: 0.12,         // 0 a 1: más alto = responde más rápido al scroll
-  blend: false,            // false = una sola imagen nítida (sin efecto fantasma)
-  touchSmoothing: 0.4,     // en el teléfono el scroll ya tiene inercia: menos retraso
   maxDpr: 2,               // resolución máxima del canvas en pantallas normales
   maxDprTouch: 1.5         // resolución máxima en teléfonos (más ligero)
 };
@@ -77,94 +71,271 @@ const formatPrice = new Intl.NumberFormat("es-CO", {
 });
 
 const ctx = els.canvas.getContext("2d");
-const heroFrames = [];
-const scrollFrames = [];
-let currentFrame = 0;    // posición suavizada (puede tener decimales)
-let targetFrame = 0;     // posición según el scroll
+const videoSeekStates = new WeakMap();
+const heroFrameCache = [];
+const scrollFrameCache = [];
+let heroVideo = null;
+let scrollVideo = null;
+let heroFrameCount = 0;
+let lastCachedHeroFrame = -1;
 let lastDrawn = -1;
 let lastMode = "";
 let heroFrameIndex = 0;
+let heroDirection = 1;
+let heroAwaitingStart = false;
 let isHeroLoop = true;
 let heroLoopStartedAt = 0;
-let isShopActive = false;
 let selectedProductId = "clasico";
 
-/* ---------- 1. Cargar imágenes ---------- */
+/* ---------- 1. Cargar videos ---------- */
 
-function pad(n) {
-  return String(n).padStart(CONFIG.digits, "0");
+let realProgress = 0; // 0 a 1, según los videos cargados
+let loadedVideos = 0;
+const totalVideos = 2;
+
+function markVideoLoaded() {
+  loadedVideos++;
+  realProgress = loadedVideos / totalVideos;
 }
 
-function frameUrl(folder, i, ext) {
-  return folder + "/" + CONFIG.prefix + pad(i + 1) + "." + ext;
-}
-
-function loadImage(src) {
+function loadVideo(src) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = () => {
-      // decode() deja la imagen lista para dibujar sin tirones
-      (img.decode ? img.decode() : Promise.resolve()).catch(() => {}).then(() => resolve(img));
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+
+    const onLoaded = () => {
+      if (!Number.isFinite(video.duration) || video.duration <= 0) {
+        reject(new Error("El video no tiene una duración válida: " + src));
+        return;
+      }
+      resolve(video);
     };
-    img.onerror = () => reject(new Error("No se encontró " + src));
-    img.src = src;
+    const onError = () => reject(new Error("No se pudo cargar el video: " + src));
+
+    video.addEventListener("loadeddata", onLoaded, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    video.src = src;
+    video.load();
   });
 }
 
-// Prueba cada extensión con el primer fotograma hasta encontrar la correcta
-async function detectExtension(folder) {
-  for (const ext of CONFIG.extensions) {
-    try {
-      const first = await loadImage(frameUrl(folder, 0, ext));
-      return { ext, first };
-    } catch (e) { /* prueba la siguiente */ }
-  }
-  throw new Error(
-    "No se encontró " + folder + "/" + CONFIG.prefix + pad(1) + " (probé: " +
-    CONFIG.extensions.join(", ") + ")"
-  );
+function registerVideoSeek(video) {
+  const state = { targetTime: 0, seeking: false };
+  videoSeekStates.set(video, state);
+  video.addEventListener("seeked", () => {
+    state.seeking = false;
+    if (video === scrollVideo) {
+      onScroll();
+    } else if (Math.abs(video.currentTime - state.targetTime) <= 0.04) {
+      drawCover(video);
+      if (heroAwaitingStart) {
+        heroAwaitingStart = false;
+        if (isHeroLoop) playHeroVideo();
+      }
+    } else {
+      requestVideoTime(video, state.targetTime);
+    }
+  });
 }
 
-let realProgress = 0; // 0 a 1, según las imágenes cargadas
-let loadedFrames = 0;
-const totalFrames = CONFIG.frameCount * 2;
+function requestVideoTime(video, time) {
+  if (!video || video.readyState < 2) return;
+  const state = videoSeekStates.get(video);
+  if (!state) return;
 
-function markFrameLoaded() {
-  loadedFrames++;
-  realProgress = loadedFrames / totalFrames;
-}
+  state.targetTime = Math.max(0, Math.min(time, video.duration - 1 / 30));
+  if (state.seeking) return;
 
-async function loadFrameSet(folder, destination) {
-  const { ext, first } = await detectExtension(folder);
-  destination[0] = first;
-  markFrameLoaded();
-  const jobs = [];
-  for (let i = 1; i < CONFIG.frameCount; i++) {
-    jobs.push(
-      loadImage(frameUrl(folder, i, ext)).then((img) => {
-        destination[i] = img;
-        markFrameLoaded();
-      })
-    );
+  if (Math.abs(video.currentTime - state.targetTime) <= 0.04) {
+    drawCover(video);
+    return;
   }
-  await Promise.all(jobs);
+
+  state.seeking = true;
+  video.currentTime = state.targetTime;
 }
 
 function startHeroPreview() {
-  heroFrameIndex = heroFrames.length - 1;
+  heroFrameCount = Math.max(2, Math.round(heroVideo.duration * CONFIG.loopFps) + 1);
+  heroFrameIndex = heroFrameCount - 1;
+  heroDirection = 1;
   heroLoopStartedAt = performance.now();
-  drawFrame(heroFrameIndex, heroFrames);
-  lastDrawn = heroFrameIndex;
+  heroVideo.currentTime = 0;
+  cacheHeroFrame(0);
+  playHeroVideo();
+  watchHeroFrames();
+  lastDrawn = -1;
   lastMode = "hero";
   requestAnimationFrame(loop);
 }
 
-async function loadFrames() {
+function cacheHeroFrame(index) {
+  if (index <= lastCachedHeroFrame || !heroVideo.videoWidth) return;
+  const scale = Math.min(1, els.canvas.width / heroVideo.videoWidth);
+  const frame = document.createElement("canvas");
+  frame.width = Math.round(heroVideo.videoWidth * scale);
+  frame.height = Math.round(heroVideo.videoHeight * scale);
+  frame.getContext("2d").drawImage(heroVideo, 0, 0, frame.width, frame.height);
+
+  for (let i = lastCachedHeroFrame + 1; i <= index; i++) {
+    heroFrameCache[i] = frame;
+  }
+  lastCachedHeroFrame = index;
+}
+
+function playHeroVideo() {
+  if (!heroVideo || !isHeroLoop || heroDirection !== 1 || !heroVideo.paused) return;
+  const playback = heroVideo.play();
+  if (playback) {
+    playback.catch((err) => {
+      console.error("No se pudo reproducir el video del hero.", err);
+      els.loaderError.hidden = false;
+      els.loaderError.textContent = "No se pudo reproducir el video del hero. " + err.message;
+    });
+  }
+}
+
+function watchHeroFrames() {
+  const captureFrame = () => {
+    if (heroDirection !== 1 || heroVideo.readyState < 2) return;
+    const index = Math.min(
+      heroFrameCount - 1,
+      Math.round(heroVideo.currentTime / heroVideo.duration * (heroFrameCount - 1))
+    );
+    cacheHeroFrame(index);
+  };
+
+  if (typeof heroVideo.requestVideoFrameCallback === "function") {
+    const drawNextFrame = () => {
+      heroVideo.requestVideoFrameCallback(() => {
+        captureFrame();
+        if (isHeroLoop && heroDirection === 1 && heroVideo.readyState >= 2) {
+          drawCover(heroVideo);
+        }
+        drawNextFrame();
+      });
+    };
+    drawNextFrame();
+  } else {
+    heroVideo.addEventListener("timeupdate", () => {
+      captureFrame();
+      if (isHeroLoop && heroDirection === 1 && heroVideo.readyState >= 2) {
+        drawCover(heroVideo);
+      }
+    });
+  }
+
+  heroVideo.addEventListener("ended", () => {
+    if (!isHeroLoop) return;
+    heroVideo.pause();
+    heroDirection = -1;
+    heroLoopStartedAt = performance.now();
+    heroFrameIndex = heroFrameCount - 1;
+    cacheHeroFrame(heroFrameIndex);
+    drawCover(heroFrameCache[heroFrameIndex]);
+    lastDrawn = heroFrameIndex;
+  });
+}
+
+async function loadVideos() {
   await Promise.all([
-    loadFrameSet(CONFIG.heroFolder, heroFrames).then(startHeroPreview),
-    loadFrameSet(CONFIG.scrollFolder, scrollFrames)
+    loadVideo(CONFIG.heroVideo).then((video) => {
+      heroVideo = video;
+      registerVideoSeek(heroVideo);
+      markVideoLoaded();
+      startHeroPreview();
+    }),
+    loadVideo(CONFIG.scrollVideo).then(async (video) => {
+      scrollVideo = video;
+      await cacheScrollFrames();
+      markVideoLoaded();
+    })
   ]);
+}
+
+function cacheScrollFrames() {
+  return new Promise((resolve, reject) => {
+    const frameCount = Math.ceil(scrollVideo.duration * CONFIG.scrollFps) + 1;
+    let nextFrame = 1;
+    let settled = false;
+
+    const capture = () => {
+      const scale = Math.min(1, els.canvas.width / scrollVideo.videoWidth);
+      const frame = document.createElement("canvas");
+      frame.width = Math.round(scrollVideo.videoWidth * scale);
+      frame.height = Math.round(scrollVideo.videoHeight * scale);
+      frame.getContext("2d").drawImage(scrollVideo, 0, 0, frame.width, frame.height);
+      return frame;
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      scrollVideo.pause();
+      resolve();
+    };
+
+    const completeFrames = () => {
+      if (nextFrame < frameCount) {
+        const lastFrame = capture();
+        while (nextFrame < frameCount) {
+          scrollFrameCache[nextFrame] = lastFrame;
+          nextFrame++;
+        }
+      }
+      finish();
+    };
+
+    scrollFrameCache[0] = capture();
+    scrollVideo.addEventListener("error", () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("No se pudo decodificar el video del scroll."));
+    }, { once: true });
+
+    const captureThrough = (mediaTime) => {
+      if (settled) return true;
+      if (nextFrame / CONFIG.scrollFps <= mediaTime) {
+        const lastFrame = capture();
+        while (nextFrame < frameCount && nextFrame / CONFIG.scrollFps <= mediaTime) {
+          scrollFrameCache[nextFrame] = lastFrame;
+          nextFrame++;
+        }
+        realProgress = (loadedVideos + nextFrame / frameCount) / totalVideos;
+      }
+      if (mediaTime >= scrollVideo.duration - 0.05) {
+        completeFrames();
+        return true;
+      }
+      return false;
+    };
+
+    const captureNextFrame = (_now, metadata) => {
+      if (!captureThrough(metadata.mediaTime)) {
+        scrollVideo.requestVideoFrameCallback(captureNextFrame);
+      }
+    };
+
+    scrollVideo.addEventListener("ended", completeFrames, { once: true });
+    if (typeof scrollVideo.requestVideoFrameCallback === "function") {
+      scrollVideo.requestVideoFrameCallback(captureNextFrame);
+    } else {
+      const pollVideo = () => {
+        if (!captureThrough(scrollVideo.currentTime)) requestAnimationFrame(pollVideo);
+      };
+      requestAnimationFrame(pollVideo);
+    }
+    const playback = scrollVideo.play();
+    if (playback) {
+      playback.catch((err) => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("No se pudo preparar el video del scroll: " + err.message));
+      });
+    }
+  });
 }
 
 /* ---------- 2. Animación de carga breve ---------- */
@@ -220,87 +391,42 @@ function resizeCanvas() {
   const dpr = canvasDpr();
   els.canvas.width = Math.round(w * dpr);
   els.canvas.height = Math.round(h * dpr);
-  paintArts();
-  if (heroFrames.length && scrollFrames.length) {
+  if (heroVideo && scrollVideo) {
     drawActiveFrame();         // redibujar al instante, sin esperar al bucle
-    lastDrawn = isHeroLoop ? heroFrameIndex : Math.round(currentFrame);
+    lastDrawn = isHeroLoop ? heroFrameIndex : -1;
     lastMode = isHeroLoop ? "hero" : "scroll";
   }
 }
 
-function drawCover(img) {
+function drawCover(video) {
+  if (!video) return;
   const cw = els.canvas.width;
   const ch = els.canvas.height;
-  const scale = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-  const dw = img.naturalWidth * scale;
-  const dh = img.naturalHeight * scale;
-  ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+  const width = video.videoWidth || video.width;
+  const height = video.videoHeight || video.height;
+  const scale = Math.max(cw / width, ch / height);
+  const dw = width * scale;
+  const dh = height * scale;
+  ctx.drawImage(video, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
 }
 
-// Dibuja el fotograma más cercano. Con CONFIG.blend = true mezcla dos vecinos.
-function drawFrame(pos, sequence) {
-  if (!CONFIG.blend) {
-    const img = sequence[Math.min(sequence.length - 1, Math.max(0, Math.round(pos)))];
-    if (img) {
-      ctx.globalAlpha = 1;
-      drawCover(img);
-    }
-    return;
-  }
+function drawScrollFrame(progress) {
+  if (!scrollFrameCache.length) return;
+  const position = Math.min(scrollFrameCache.length - 1, Math.max(0, progress * (scrollFrameCache.length - 1)));
+  const first = Math.floor(position);
+  const second = Math.min(scrollFrameCache.length - 1, first + 1);
+  const blend = position - first;
 
-  const lo = Math.floor(pos);
-  const hi = Math.min(sequence.length - 1, lo + 1);
-  const t = pos - lo;
-
-  if (!sequence[lo]) return;
   ctx.globalAlpha = 1;
-  drawCover(sequence[lo]);
-
-  if (t > 0.02 && hi !== lo && sequence[hi]) {
-    ctx.globalAlpha = t;
-    drawCover(sequence[hi]);
+  drawCover(scrollFrameCache[first]);
+  if (blend > 0 && second !== first) {
+    ctx.globalAlpha = blend;
+    drawCover(scrollFrameCache[second]);
     ctx.globalAlpha = 1;
   }
 }
 
-/* ---------- 4. Imágenes de las secciones a partir de los fotogramas ----------
-   Cada <canvas data-frame="N"> muestra el fotograma N (índice desde 0).
-   Opciones: data-zoom (acercar), data-fx / data-fy (punto de enfoque de 0 a 1). */
-
-function num(value, fallback) {
-  const n = parseFloat(value);
-  return isNaN(n) ? fallback : n;
-}
-
-function paintArts() {
-  if (!scrollFrames.length) return;
-  const dpr = canvasDpr();
-
-  document.querySelectorAll("canvas[data-frame]").forEach((c) => {
-    const index = Math.min(scrollFrames.length - 1, Math.max(0, num(c.dataset.frame, 0)));
-    const img = scrollFrames[index];
-    const w = c.clientWidth;
-    const h = c.clientHeight;
-    if (!img || !w || !h) return;
-
-    c.width = Math.round(w * dpr);
-    c.height = Math.round(h * dpr);
-
-    const zoom = num(c.dataset.zoom, 1);
-    const fx = num(c.dataset.fx, 0.5);
-    const fy = num(c.dataset.fy, 0.5);
-
-    const base = Math.max(c.width / img.naturalWidth, c.height / img.naturalHeight) * zoom;
-    const dw = img.naturalWidth * base;
-    const dh = img.naturalHeight * base;
-    const x = -(dw - c.width) * fx;
-    const y = -(dh - c.height) * fy;
-
-    c.getContext("2d").drawImage(img, x, y, dw, dh);
-  });
-}
-
-/* ---------- 5. Scroll ---------- */
+/* ---------- 4. Scroll ---------- */
 
 function getSceneProgress() {
   const rect = els.scene.getBoundingClientRect();
@@ -331,17 +457,16 @@ function updateTopbar() {
 
 function onScroll() {
   const p = getSceneProgress();
-  const maxScrollFrame = Math.max(0, scrollFrames.length - 1);
-  const showShop = p >= 0.94;
+  const reachedShop = p >= 0.94;
   isHeroLoop = p === 0;
-  if (showShop && !isShopActive && scrollFrames.length) {
-    currentFrame = maxScrollFrame;
-    drawFrame(currentFrame, scrollFrames);
-    lastDrawn = maxScrollFrame;
-    lastMode = "scroll";
+  if (isHeroLoop) {
+    playHeroVideo();
+  } else if (heroVideo && heroDirection === 1) {
+    heroVideo.pause();
   }
-  isShopActive = showShop;
-  targetFrame = showShop ? maxScrollFrame : p * maxScrollFrame;
+  const videoProgress = reachedShop ? 1 : Math.min(1, p / 0.94);
+  if (!isHeroLoop) drawScrollFrame(videoProgress);
+  const showShop = reachedShop;
   els.shop.classList.toggle("is-active", showShop);
   els.shop.setAttribute("aria-hidden", String(!showShop));
   updateChapters(p);
@@ -349,41 +474,39 @@ function onScroll() {
   updateTopbar();
 }
 
-/* ---------- 6. Bucle de animación (suaviza el avance) ---------- */
+/* ---------- 5. Bucle de animación ---------- */
 
 function drawActiveFrame() {
   if (isHeroLoop) {
-    drawFrame(heroFrameIndex, heroFrames);
+    if (heroDirection === 1) {
+      playHeroVideo();
+    } else {
+      drawCover(heroFrameCache[heroFrameIndex]);
+    }
   } else {
-    drawFrame(currentFrame, scrollFrames);
+    const p = getSceneProgress();
+    drawScrollFrame(Math.min(1, p / 0.94));
   }
 }
 
 function loop(now) {
-  if (isHeroLoop) {
+  if (isHeroLoop && heroDirection === -1) {
     const elapsedFrames = Math.floor((now - heroLoopStartedAt) / (1000 / CONFIG.loopFps));
-    const cycleLength = Math.max(1, 2 * (heroFrames.length - 1));
-    const phase = elapsedFrames % cycleLength;
-    const shown = phase < heroFrames.length
-      ? heroFrames.length - 1 - phase
-      : phase - (heroFrames.length - 1);
-    if (lastMode !== "hero" || shown !== lastDrawn) {
+    const shown = heroFrameCount - 1 - elapsedFrames;
+    if (shown < 0) {
+      heroDirection = 1;
+      heroAwaitingStart = true;
+      requestVideoTime(heroVideo, 0);
+    } else if (shown < heroFrameCount && shown !== lastDrawn) {
       heroFrameIndex = shown;
-      drawFrame(heroFrameIndex, heroFrames);
+      const frame = heroFrameCache[heroFrameIndex];
+      if (frame) {
+        drawCover(frame);
+      } else {
+        requestVideoTime(heroVideo, heroFrameIndex / (heroFrameCount - 1) * heroVideo.duration);
+      }
       lastDrawn = shown;
       lastMode = "hero";
-    }
-  } else {
-    const smoothing = isTouch ? CONFIG.touchSmoothing : CONFIG.smoothing;
-    currentFrame += (targetFrame - currentFrame) * smoothing;
-    if (Math.abs(targetFrame - currentFrame) < 0.01) currentFrame = targetFrame;
-
-    // Sin mezcla solo hace falta redibujar cuando cambia el fotograma entero
-    const shown = CONFIG.blend ? currentFrame : Math.round(currentFrame);
-    if (lastMode !== "scroll" || Math.abs(shown - lastDrawn) > (CONFIG.blend ? 0.004 : 0)) {
-      drawFrame(currentFrame, scrollFrames);
-      lastDrawn = shown;
-      lastMode = "scroll";
     }
   }
   requestAnimationFrame(loop);
@@ -632,28 +755,25 @@ async function init() {
   const animation = runLoaderAnimation(); // arranca ya, avanza con la carga real
 
   try {
-    await loadFrames();
+    await loadVideos();
     await animation;          // espera a que termine el recorrido del avión
     const previewRemaining = CONFIG.heroPreviewTime - (performance.now() - heroLoopStartedAt);
     if (previewRemaining > 0) {
       await new Promise((resolve) => setTimeout(resolve, previewRemaining));
     }
 
-    paintArts();
     onScroll();
-    currentFrame = targetFrame;
     drawActiveFrame();
-    lastDrawn = isHeroLoop ? heroFrameIndex : Math.round(currentFrame);
+    lastDrawn = isHeroLoop ? heroFrameIndex : -1;
     lastMode = isHeroLoop ? "hero" : "scroll";
     els.loader.classList.add("is-done");
   } catch (err) {
     console.error(err);
     els.loaderError.hidden = false;
     els.loaderError.textContent =
-      "No se pudieron cargar las imágenes de \"" + CONFIG.heroFolder + "\" o \"" +
-      CONFIG.scrollFolder + "\". Revisa que ambas carpetas estén junto a index.html y que " +
-      "contengan archivos desde " + CONFIG.prefix + pad(1) + " hasta " +
-      CONFIG.prefix + pad(CONFIG.frameCount) + ". Detalle: " + err.message;
+      "No se pudieron cargar los videos \"" + CONFIG.heroVideo + "\" o \"" +
+      CONFIG.scrollVideo + "\". Revisa que ambos archivos estén junto a index.html. " +
+      "Detalle: " + err.message;
   }
 }
 
