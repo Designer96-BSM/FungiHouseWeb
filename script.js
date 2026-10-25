@@ -5,8 +5,8 @@
    ========================================================== */
 
 const CONFIG = {
-  heroVideo: "videos/fungihousev2.mp4",
-  scrollVideo: "videos/fungihousev1.mp4",
+  heroVideo: "videos/fungihousev2.webm",
+  scrollVideo: "videos/fungihousev1.webm",
   loopFps: 10,             // frecuencia de los fotogramas guardados para el tramo inverso
   scrollFps: 24,
   heroPreviewTime: 1200,   // tiempo mínimo para ver el hero detrás del loader
