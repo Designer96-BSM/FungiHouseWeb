@@ -9,7 +9,6 @@ const CONFIG = {
   scrollVideo: "videos/fungihousev1.webm",
   loopFps: 10,             // frecuencia de los fotogramas guardados para el tramo inverso
   scrollFps: 24,
-  initialScrollPreviewSeconds: 0.4,
   heroPreviewTime: 350,    // tiempo mínimo para ver el hero detrás del loader
   minLoadTime: 300,        // tiempo mínimo de la animación de carga
   maxDpr: 2,               // resolución máxima del canvas en pantallas normales
@@ -251,7 +250,6 @@ async function loadVideos() {
     loadVideo(CONFIG.scrollVideo).then(async (video) => {
       scrollVideo = video;
       await cacheScrollFrames();
-      markVideoLoaded();
     })
   ]);
 }
@@ -260,11 +258,6 @@ function cacheScrollFrames() {
   return new Promise((resolve, reject) => {
     const frameCount = Math.ceil(scrollVideo.duration * CONFIG.scrollFps) + 1;
     let nextFrame = 1;
-    const initialFrameCount = Math.min(
-      frameCount,
-      Math.ceil(CONFIG.initialScrollPreviewSeconds * CONFIG.scrollFps) + 1
-    );
-    let isReady = false;
     let isFinished = false;
 
     const capture = () => {
@@ -280,7 +273,8 @@ function cacheScrollFrames() {
       if (isFinished) return;
       isFinished = true;
       scrollVideo.pause();
-      resolveReady();
+      markVideoLoaded();
+      resolve();
     };
 
     const completeFrames = () => {
@@ -291,27 +285,20 @@ function cacheScrollFrames() {
           nextFrame++;
         }
       }
+      for (let i = 0; i < frameCount; i++) {
+        if (!scrollFrameCache[i]) {
+          fail(new Error("No se pudo preparar el fotograma " + (i + 1) + " del video del scroll."));
+          return;
+        }
+      }
       finish();
-    };
-
-    const resolveReady = () => {
-      if (isReady) return;
-      isReady = true;
-      markVideoLoaded();
-      resolve();
     };
 
     const fail = (error) => {
       if (isFinished) return;
       isFinished = true;
       scrollVideo.pause();
-      if (isReady) {
-        console.error(error);
-        els.loaderError.hidden = false;
-        els.loaderError.textContent = error.message;
-      } else {
-        reject(error);
-      }
+      reject(error);
     };
 
     scrollFrameCache[0] = capture();
@@ -327,7 +314,7 @@ function cacheScrollFrames() {
           scrollFrameCache[nextFrame] = lastFrame;
           nextFrame++;
         }
-        if (!isReady && nextFrame >= initialFrameCount) resolveReady();
+        realProgress = (loadedVideos + nextFrame / frameCount) / totalVideos;
       }
       if (mediaTime >= scrollVideo.duration - 0.05) {
         completeFrames();
