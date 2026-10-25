@@ -9,8 +9,9 @@ const CONFIG = {
   scrollVideo: "videos/fungihousev1.webm",
   loopFps: 10,             // frecuencia de los fotogramas guardados para el tramo inverso
   scrollFps: 24,
-  heroPreviewTime: 1200,   // tiempo mínimo para ver el hero detrás del loader
-  minLoadTime: 1000,       // milisegundos mínimos de la animación de carga
+  initialScrollPreviewSeconds: 0.4,
+  heroPreviewTime: 350,    // tiempo mínimo para ver el hero detrás del loader
+  minLoadTime: 300,        // tiempo mínimo de la animación de carga
   maxDpr: 2,               // resolución máxima del canvas en pantallas normales
   maxDprTouch: 1.5         // resolución máxima en teléfonos (más ligero)
 };
@@ -259,7 +260,12 @@ function cacheScrollFrames() {
   return new Promise((resolve, reject) => {
     const frameCount = Math.ceil(scrollVideo.duration * CONFIG.scrollFps) + 1;
     let nextFrame = 1;
-    let settled = false;
+    const initialFrameCount = Math.min(
+      frameCount,
+      Math.ceil(CONFIG.initialScrollPreviewSeconds * CONFIG.scrollFps) + 1
+    );
+    let isReady = false;
+    let isFinished = false;
 
     const capture = () => {
       const scale = Math.min(1, els.canvas.width / scrollVideo.videoWidth);
@@ -271,10 +277,10 @@ function cacheScrollFrames() {
     };
 
     const finish = () => {
-      if (settled) return;
-      settled = true;
+      if (isFinished) return;
+      isFinished = true;
       scrollVideo.pause();
-      resolve();
+      resolveReady();
     };
 
     const completeFrames = () => {
@@ -288,22 +294,40 @@ function cacheScrollFrames() {
       finish();
     };
 
+    const resolveReady = () => {
+      if (isReady) return;
+      isReady = true;
+      markVideoLoaded();
+      resolve();
+    };
+
+    const fail = (error) => {
+      if (isFinished) return;
+      isFinished = true;
+      scrollVideo.pause();
+      if (isReady) {
+        console.error(error);
+        els.loaderError.hidden = false;
+        els.loaderError.textContent = error.message;
+      } else {
+        reject(error);
+      }
+    };
+
     scrollFrameCache[0] = capture();
     scrollVideo.addEventListener("error", () => {
-      if (settled) return;
-      settled = true;
-      reject(new Error("No se pudo decodificar el video del scroll."));
+      fail(new Error("No se pudo decodificar el video del scroll."));
     }, { once: true });
 
     const captureThrough = (mediaTime) => {
-      if (settled) return true;
+      if (isFinished) return true;
       if (nextFrame / CONFIG.scrollFps <= mediaTime) {
         const lastFrame = capture();
         while (nextFrame < frameCount && nextFrame / CONFIG.scrollFps <= mediaTime) {
           scrollFrameCache[nextFrame] = lastFrame;
           nextFrame++;
         }
-        realProgress = (loadedVideos + nextFrame / frameCount) / totalVideos;
+        if (!isReady && nextFrame >= initialFrameCount) resolveReady();
       }
       if (mediaTime >= scrollVideo.duration - 0.05) {
         completeFrames();
@@ -330,9 +354,7 @@ function cacheScrollFrames() {
     const playback = scrollVideo.play();
     if (playback) {
       playback.catch((err) => {
-        if (settled) return;
-        settled = true;
-        reject(new Error("No se pudo preparar el video del scroll: " + err.message));
+        fail(new Error("No se pudo preparar el video del scroll: " + err.message));
       });
     }
   });
@@ -416,12 +438,20 @@ function drawScrollFrame(progress) {
   const first = Math.floor(position);
   const second = Math.min(scrollFrameCache.length - 1, first + 1);
   const blend = position - first;
+  let firstFrame = scrollFrameCache[first];
+  if (!firstFrame) {
+    for (let i = first - 1; i >= 0 && !firstFrame; i--) {
+      firstFrame = scrollFrameCache[i];
+    }
+  }
+  if (!firstFrame) return;
+  const secondFrame = scrollFrameCache[second] || firstFrame;
 
   ctx.globalAlpha = 1;
-  drawCover(scrollFrameCache[first]);
-  if (blend > 0 && second !== first) {
+  drawCover(firstFrame);
+  if (blend > 0 && secondFrame !== firstFrame) {
     ctx.globalAlpha = blend;
-    drawCover(scrollFrameCache[second]);
+    drawCover(secondFrame);
     ctx.globalAlpha = 1;
   }
 }
