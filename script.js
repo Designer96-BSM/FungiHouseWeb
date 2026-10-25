@@ -9,6 +9,7 @@ const CONFIG = {
   scrollVideo: "videos/fungihousev1.webm",
   loopFps: 10,             // frecuencia de los fotogramas guardados para el tramo inverso
   scrollFps: 24,
+  scrollCachePlaybackRate: 2,
   heroPreviewTime: 350,    // tiempo mínimo para ver el hero detrás del loader
   minLoadTime: 300,        // tiempo mínimo de la animación de carga
   maxDpr: 2,               // resolución máxima del canvas en pantallas normales
@@ -338,6 +339,7 @@ function cacheScrollFrames() {
       };
       requestAnimationFrame(pollVideo);
     }
+    scrollVideo.playbackRate = CONFIG.scrollCachePlaybackRate;
     const playback = scrollVideo.play();
     if (playback) {
       playback.catch((err) => {
